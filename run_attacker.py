@@ -68,7 +68,7 @@ class Handler(BaseHandler):
     def handle_get(self, path, q):
         if path == "/api/scenarios":
             return self.send_json({"groups": catalog(),
-                                   "defaults": {"src_ip": "10.66.6.6", "victim_ip": "196.102.21.5"}})
+                                   "defaults": {"src_ip": "10.11.10.12", "victim_ip": "196.102.21.5"}})
         if path == "/api/status":
             return self.send_json(self.app.status())
         self.send_json({"error": "not found"}, 404)

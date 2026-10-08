@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attacker · Attack Console</title>
+<style>
+:root{--bg:#0b0f14;--panel:#121923;--line:#223042;--text:#d7e1ec;--muted:#7d8ea3;--red:#ff5d5d;--green:#3ddc97;--amber:#ffb454;--blue:#5aa9ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
+header{padding:14px 22px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+h1{font-size:18px;margin:0;color:var(--red)}
+header a{color:var(--blue);text-decoration:none;font-size:13px}
+.banner{background:#2a1d0b;color:var(--amber);padding:8px 22px;font-size:12.5px;border-bottom:1px solid var(--line)}
+main{max-width:980px;margin:0 auto;padding:20px;display:grid;gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:700px){.grid{grid-template-columns:1fr}}
+label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em}
+input,select{width:100%;background:#0b1118;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:9px 10px;font:inherit}
+.desc{margin:12px 0 0;padding:10px 12px;background:#0b1118;border-left:3px solid var(--red);border-radius:4px;color:var(--muted);min-height:44px}
+.row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+button{border:0;border-radius:6px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer}
+button:disabled{opacity:.4;cursor:not-allowed}
+#start{background:var(--red);color:#fff}
+#stop{background:#2b3645;color:var(--text)}
+#reset{background:transparent;color:var(--muted);border:1px solid var(--line)}
+.bar{height:10px;background:#0b1118;border-radius:6px;overflow:hidden;margin:10px 0}
+.bar>div{height:100%;width:0;background:var(--red);transition:width .2s}
+.meta{display:flex;justify-content:space-between;color:var(--muted);font-size:13px}
+.feed{background:#05080c;border:1px solid var(--line);border-radius:6px;padding:10px;font:12px/1.5 ui-monospace,Consolas,monospace;height:260px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+.err{color:var(--red);margin-top:10px;min-height:18px}
+h2{font-size:14px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.pill{padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600}
+.idle{background:#1c2633;color:var(--muted)}.running{background:#3b1717;color:var(--red)}.done{background:#10301f;color:var(--green)}.stopped{background:#33280f;color:var(--amber)}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚔ Attacker — Attack Console</h1>
+  <a href="http://127.0.0.1:5002" target="_blank">Open Firewall dashboard →</a>
+</header>
+<div class="banner">Educational simulation only. Nothing here touches a real network: each "packet" is a JSON file dropped into a local shared folder. IPs are plain data.</div>
+<main>
+  <section class="card">
+    <h2>Configure attack</h2>
+    <div class="grid">
+      <div><label for="src">Attacker (source) IP</label><input id="src"></div>
+      <div><label for="victim">Victim IP <span style="text-transform:none">(firewall protects 196.102.21.0 – .13 by default)</span></label><input id="victim"></div>
+      <div><label for="group">Attack category</label><select id="group"></select></div>
+      <div><label for="item">Attack type</label><select id="item"></select></div>
+    </div>
+    <div class="desc" id="desc"></div>
+    <div class="row">
+      <button id="start">▶ Start attack</button>
+      <button id="stop" disabled>■ Stop</button>
+      <button id="reset" title="Clears the firewall's rate/scan counters between demos">Reset firewall counters</button>
+    </div>
+    <div class="err" id="err"></div>
+  </section>
+  <section class="card">
+    <h2>Progress <span id="state" class="pill idle">idle</span></h2>
+    <div class="meta"><span id="label">—</span><span id="count">0 / 0 packets</span></div>
+    <div class="bar"><div id="fill"></div></div>
+    <div class="feed" id="feed">Waiting to start…</div>
+    <p style="color:var(--muted);font-size:12px;margin:10px 0 0">The firewall is never told which attack you picked — it only sees the packets above and works out the type from their signatures and behavior.</p>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let groups = [];
+
+async function api(path, body){
+  const r = await fetch(path, body ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)} : undefined);
+  const d = await r.json(); if(!r.ok) throw new Error(d.error || 'request failed'); return d;
+}
+function fillItems(){
+  const g = groups[$('group').value];
+  $('item').innerHTML = g.items.map((it,i)=>`<option value="${i}">${esc(it.label)}</option>`).join('');
+  showDesc();
+}
+function showDesc(){
+  const it = groups[$('group').value].items[$('item').value];
+  $('desc').textContent = it ? `${it.description}  (${it.packets} packets)` : '';
+}
+async function init(){
+  const d = await api('/api/scenarios'); groups = d.groups;
+  $('src').value = d.defaults.src_ip; $('victim').value = d.defaults.victim_ip;
+  $('group').innerHTML = groups.map((g,i)=>`<option value="${i}">${esc(g.name)}</option>`).join('');
+  fillItems(); poll(); setInterval(poll, 400);
+}
+async function poll(){
+  try{
+    const s = await api('/api/status');
+    const running = s.state === 'running';
+    $('state').textContent = s.state; $('state').className = 'pill ' + s.state;
+    $('start').disabled = running; $('stop').disabled = !running;
+    $('label').textContent = s.label || '—';
+    $('count').textContent = `${s.sent} / ${s.total} packets`;
+    $('fill').style.width = s.total ? (100*s.sent/s.total)+'%' : '0';
+    if(s.recent.length){
+      $('feed').innerHTML = s.recent.map(r =>
+        `#${r.n} → :${r.dst_port} ${esc(r.proto)} ${r.flags?'['+esc(r.flags)+'] ':''}${esc(r.preview)}`).join('\n');
+      $('feed').scrollTop = $('feed').scrollHeight;
+    }
+  }catch(e){}
+}
+$('group').onchange = fillItems; $('item').onchange = showDesc;
+$('start').onclick = async () => {
+  $('err').textContent = '';
+  try{
+    const it = groups[$('group').value].items[$('item').value];
+    await api('/api/attack', {scenario: it.key, victim_ip: $('victim').value.trim(), src_ip: $('src').value.trim()});
+  }catch(e){ $('err').textContent = e.message; }
+};
+$('stop').onclick = () => api('/api/stop', {});
+$('reset').onclick = async () => { await api('/api/reset-firewall', {}); $('err').textContent=''; };
+init();
+</script>
+</body>
+</html>

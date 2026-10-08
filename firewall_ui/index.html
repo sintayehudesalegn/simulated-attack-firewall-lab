@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Firewall · Threat Dashboard</title>
+<style>
+:root{--bg:#0b0f14;--panel:#121923;--line:#223042;--text:#d7e1ec;--muted:#7d8ea3;--red:#ff5d5d;--green:#3ddc97;--amber:#ffb454;--blue:#5aa9ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
+header{padding:14px 22px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+h1{font-size:18px;margin:0;color:var(--green)}
+header a{color:var(--blue);text-decoration:none;font-size:13px}
+.banner{background:#2a1d0b;color:var(--amber);padding:8px 22px;font-size:12.5px;border-bottom:1px solid var(--line)}
+main{max-width:1280px;margin:0 auto;padding:18px;display:grid;gap:14px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.stat b{display:block;font-size:26px}.stat span{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:800px){.two{grid-template-columns:1fr}}
+h2{font-size:13px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.bars div.r{display:grid;grid-template-columns:200px 1fr 40px;gap:8px;align-items:center;margin:4px 0;font-size:13px}
+.bars .t{height:8px;background:#0b1118;border-radius:4px;overflow:hidden}.bars .t i{display:block;height:100%;background:var(--red)}
+.bars .n{text-align:right;color:var(--muted)}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tools input,.tools select{background:#0b1118;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px 9px;font:inherit}
+.tools input{min-width:200px;flex:1}
+button{background:#1c2633;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px 12px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--blue)}button.danger{color:var(--red)}
+.tablewrap{overflow:auto;max-height:560px;border:1px solid var(--line);border-radius:8px;margin-top:10px}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th{position:sticky;top:0;background:#0f1620;text-align:left;padding:8px;color:var(--muted);font-weight:600;white-space:nowrap}
+td{padding:6px 8px;border-top:1px solid #182231;white-space:nowrap;vertical-align:top}
+tr.row{cursor:pointer}tr.row:hover{background:#0f1620}
+tr.detail td{white-space:normal;background:#080c11;font:12px/1.5 ui-monospace,Consolas,monospace;word-break:break-all}
+.b{padding:1px 8px;border-radius:99px;font-weight:700;font-size:11px}
+.BLOCKED{background:#3b1717;color:var(--red)}.ALLOWED{background:#10301f;color:var(--green)}
+.sev-critical{color:#ff3b7a;font-weight:700}.sev-high{color:var(--red)}.sev-medium{color:var(--amber)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--muted);margin-right:6px}
+.dot.on{background:var(--green)}
+details{margin-top:4px}summary{cursor:pointer;color:var(--blue)}
+.sigs{max-height:300px;overflow:auto;margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🛡 Firewall — Threat Dashboard</h1>
+  <div><span class="dot" id="dot"></span><span id="cfg" style="color:var(--muted);font-size:13px"></span> &nbsp; <a href="http://127.0.0.1:5001" target="_blank">Open Attacker console →</a></div>
+</header>
+<div class="banner">Educational simulation. The firewall classifies each event from its flags, ports, rate and payload signature — it is never told which attack was selected.</div>
+<main>
+  <div class="cards">
+    <div class="card stat"><b id="s-total">0</b><span>Events inspected</span></div>
+    <div class="card stat"><b id="s-blocked" style="color:var(--red)">0</b><span>Blocked</span></div>
+    <div class="card stat"><b id="s-allowed" style="color:var(--green)">0</b><span>Allowed</span></div>
+  </div>
+  <div class="two">
+    <div class="card"><h2>Blocked by category</h2><div class="bars" id="cats"></div></div>
+    <div class="card"><h2>Top detections</h2><div class="bars" id="dets"></div></div>
+  </div>
+  <div class="card">
+    <div class="tools">
+      <input id="q" placeholder="Search (IP, detection, signature id, payload…)">
+      <select id="fa"><option value="">All actions</option><option>BLOCKED</option><option>ALLOWED</option></select>
+      <select id="fc"><option value="">All categories</option><option>DoS</option><option>Network Scan</option><option>Brute Force</option><option>Payload</option><option>Malware</option><option>Other</option></select>
+      <button id="pause">⏸ Pause</button>
+      <button id="dljson">⬇ JSON</button>
+      <button id="dlcsv">⬇ CSV</button>
+      <button id="clear" class="danger">Clear log</button>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>#</th><th>Time</th><th>Action</th><th>Category</th><th>Detection</th><th>Signature</th><th>Sev</th><th>Source → Destination</th><th>Evidence</th></tr></thead>
+      <tbody id="tb"></tbody>
+    </table></div>
+    <div style="color:var(--muted);font-size:12px;margin-top:6px" id="shown"></div>
+    <details><summary>What this firewall knows (signatures &amp; heuristics)</summary>
+      <div class="sigs"><table><thead><tr><th>ID</th><th>Name</th><th>Category</th><th>Type</th><th>Severity</th></tr></thead><tbody id="sigs"></tbody></table></div>
+      <pre id="thr" style="color:var(--muted);font-size:12px"></pre>
+    </details>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let logs = [], lastSeq = 0, epoch = null, paused = false, open = new Set();
+
+function bars(el, pairs){
+  const max = Math.max(1, ...pairs.map(p => p[1]));
+  el.innerHTML = pairs.length ? pairs.map(([n,c]) =>
+    `<div class="r"><span>${esc(n)}</span><span class="t"><i style="width:${100*c/max}%"></i></span><span class="n">${c}</span></div>`).join('')
+    : '<span style="color:var(--muted)">Nothing blocked yet.</span>';
+}
+function renderStats(s){
+  const a = s.by_action || {};
+  $('s-total').textContent = s.total; $('s-blocked').textContent = a.BLOCKED || 0;
+  $('s-allowed').textContent = a.ALLOWED || 0;
+  bars($('cats'), Object.entries(s.by_category || {}).sort((x,y)=>y[1]-x[1]));
+  bars($('dets'), s.top_detections || []);
+}
+function renderTable(){
+  const q = $('q').value.toLowerCase(), fa = $('fa').value, fc = $('fc').value;
+  const rows = [];
+  for(let i = logs.length - 1; i >= 0 && rows.length < 500; i--){
+    const l = logs[i];
+    if(fa && l.action !== fa) continue;
+    if(fc && l.category !== fc) continue;
+    if(q && !JSON.stringify(l).toLowerCase().includes(q)) continue;
+    rows.push(l);
+  }
+  $('tb').innerHTML = rows.map(l => {
+    let h = `<tr class="row" data-seq="${l.seq}"><td>${l.seq}</td><td>${esc(l.time)}</td><td><span class="b ${esc(l.action)}">${esc(l.action)}</span></td>
+      <td>${esc(l.category)}</td><td>${esc(l.detection)}</td><td>${esc(l.signature_id)}</td><td class="sev-${esc(l.severity)}">${esc(l.severity)}</td>
+      <td>${esc(l.src_ip)} → ${esc(l.dst_ip)}:${esc(l.dst_port)}/${esc(l.protocol)}${l.tcp_flags?' ['+esc(l.tcp_flags)+']':''}</td><td>${esc(l.evidence)}</td></tr>`;
+    if(open.has(l.seq)) h += `<tr class="detail"><td colspan="9"><b>Reason:</b> ${esc(l.reason)}<br><b>Also matched:</b> ${esc(l.also_matched) || '—'}<br><b>Length:</b> ${esc(l.length)} bytes<br><b>Payload:</b> ${esc(l.payload_preview) || '(empty)'}</td></tr>`;
+    return h;
+  }).join('');
+  $('shown').textContent = `Showing ${rows.length} of ${logs.length} loaded events (newest first, max 500 rows). Click a row for details.`;
+}
+async function poll(){
+  if(paused) return;
+  try{
+    const d = await (await fetch('/api/logs?since=' + lastSeq)).json();
+    $('dot').className = 'dot on';
+    if(epoch !== null && d.epoch !== epoch){ logs = []; lastSeq = 0; open.clear(); epoch = d.epoch; renderStats(d.stats); renderTable(); return; }
+    epoch = d.epoch;
+    if(d.logs.length){
+      for(const l of d.logs) logs.push(l);
+      if(logs.length > 5000) logs = logs.slice(-5000);
+      lastSeq = d.logs[d.logs.length - 1].seq;
+      renderTable();
+    }
+    renderStats(d.stats);
+  }catch(e){ $('dot').className = 'dot'; }
+}
+async function loadConfig(){
+  const c = await (await fetch('/api/config')).json();
+  $('cfg').textContent = `Protected range ${c.protected_start} – ${c.protected_end}`;
+  $('sigs').innerHTML = c.signatures.map(s => `<tr><td>${esc(s.id)}</td><td>${esc(s.name)}</td><td>${esc(s.category)}</td><td>${esc(s.type)}</td><td class="sev-${esc(s.severity)}">${esc(s.severity)}</td></tr>`).join('');
+  $('thr').textContent = 'Thresholds: ' + JSON.stringify(c.thresholds, null, 1);
+}
+$('tb').onclick = e => { const tr = e.target.closest('tr.row'); if(!tr) return; const n = +tr.dataset.seq; open.has(n) ? open.delete(n) : open.add(n); renderTable(); };
+['q','fa','fc'].forEach(id => $(id).oninput = renderTable);
+$('pause').onclick = () => { paused = !paused; $('pause').textContent = paused ? '▶ Resume' : '⏸ Pause'; };
+$('dljson').onclick = () => location.href = '/api/download?format=json';
+$('dlcsv').onclick = () => location.href = '/api/download?format=csv';
+$('clear').onclick = async () => { if(confirm('Clear all logs?')) await fetch('/api/clear', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}); };
+loadConfig(); poll(); setInterval(poll, 600);
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.idea/
+.vscode/
+.DS_Store
+
+# runtime data (keep folders, ignore contents)
+shared/events/*
+shared/processed/*
+shared/logs/*
+!shared/events/.gitkeep
+!shared/processed/.gitkeep
+!shared/logs/.gitkeep
